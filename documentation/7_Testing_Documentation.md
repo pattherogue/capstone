@@ -46,6 +46,7 @@ describe('Transaction Processing', () => {
 
 ## Test Results
 
-![Node.js Terminal](./screenshots/Node.js Terminal.png)
+![Node.js Terminal](./7_screenshots/Node.js Terminal.png)
+
 
 
