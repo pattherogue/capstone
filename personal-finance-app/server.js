@@ -153,14 +153,6 @@ app.post('/api/transaction', async (req, res) => {
       });
     }
 
-    // Ensure transaction is an object
-    if (typeof transaction !== 'object' || Array.isArray(transaction)) {
-      return res.status(400).json({
-        message: 'Invalid transaction format',
-        details: 'Transaction must be an object'
-      });
-    }
-
     // Validate transaction data
     const { date, category, amount, type } = transaction;
     if (!date || !category || !amount || !type) {
@@ -169,14 +161,6 @@ app.post('/api/transaction', async (req, res) => {
         details: 'Date, category, amount, and type are required'
       });
     }
-
-    // Create validated transaction object
-    const validatedTransaction = {
-      date: new Date(date),
-      category: String(category),
-      amount: Number(amount),
-      type: String(type)
-    };
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -187,7 +171,17 @@ app.post('/api/transaction', async (req, res) => {
     }
 
     // Add transaction to user's transactions array
-    user.transactions.push(validatedTransaction);
+    user.transactions.push({
+      date: new Date(date),
+      category: String(category),
+      amount: Number(amount),
+      type: String(type)
+    });
+
+    // Update the corresponding expense category
+    user.expenses[category] = (user.expenses[category] || 0) + Number(amount);
+
+    // Save the updated user document
     await user.save();
 
     res.json({
