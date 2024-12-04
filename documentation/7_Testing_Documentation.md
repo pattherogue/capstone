@@ -46,5 +46,6 @@ describe('Transaction Processing', () => {
 
 ## Test Results
 
-![Node.js Terminal](capstone/documentation/screenshots/Node.js Terminal)
+![Node.js Terminal](./screenshots/Node.js Terminal.png)
+
 
