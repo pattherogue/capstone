@@ -63,7 +63,3 @@ npm start
 - Verify MongoDB connection
 - Check console for errors
 - Ensure correct ports are available
-
-## Support
-Contact: [support@email.com]
-Documentation: [docs-url]
