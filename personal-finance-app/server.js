@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
   },
   transactions: [{
     date: { type: Date, required: true },
-    category: { type: String, required: true },
+    category: String,
     amount: { type: Number, required: true },
     type: { type: String, required: true, enum: ['income', 'expense'] }
   }]
@@ -141,49 +141,51 @@ app.post('/api/user/update', async (req, res) => {
   }
 });
 
-// Add transaction with improved error handling
+// Add transaction with improved validation
 app.post('/api/transaction', async (req, res) => {
   try {
     const { email, transaction } = req.body;
     
     if (!email || !transaction) {
       return res.status(400).json({ 
-        message: 'Missing required fields',
-        details: 'Email and transaction data are required'
-      });
-    }
-
-    // Validate transaction data
-    const { date, category, amount, type } = transaction;
-    if (!date || !category || !amount || !type) {
-      return res.status(400).json({ 
-        message: 'Invalid transaction data',
-        details: 'Date, category, amount, and type are required'
+        message: 'Missing required fields'
       });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ 
-        message: 'User not found',
-        details: 'No user found with the provided email'
-      });
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    // Add transaction to user's transactions array
-    user.transactions.push({
-      date: new Date(date),
-      category: String(category),
-      amount: Number(amount),
-      type: String(type)
-    });
+    // Validate and parse transaction data
+    const parsedTransaction = {
+      date: new Date(transaction.date),
+      amount: Math.abs(Number(transaction.amount)), // Ensure positive number
+      type: transaction.type || 'expense',
+      category: transaction.type === 'income' ? null : transaction.category
+    };
 
-    // Update the corresponding expense category
-    user.expenses[category] = (user.expenses[category] || 0) + Number(amount);
+    // Validate amount
+    if (isNaN(parsedTransaction.amount)) {
+      return res.status(400).json({ message: 'Invalid amount' });
+    }
 
-    // Save the updated user document
+    // Validate category for expenses
+    if (parsedTransaction.type === 'expense' && !parsedTransaction.category) {
+      return res.status(400).json({ message: 'Category required for expenses' });
+    }
+
+    // Add transaction to array
+    user.transactions.push(parsedTransaction);
+
+    // Update totals
+    if (parsedTransaction.type === 'expense') {
+      user.expenses[parsedTransaction.category] = (user.expenses[parsedTransaction.category] || 0) + parsedTransaction.amount;
+    } else {
+      user.income = (user.income || 0) + parsedTransaction.amount;
+    }
+
     await user.save();
-
     res.json({
       message: 'Transaction added successfully',
       user
@@ -191,10 +193,46 @@ app.post('/api/transaction', async (req, res) => {
 
   } catch (error) {
     console.error('Transaction error:', error);
-    res.status(500).json({ 
-      message: 'Error adding transaction',
-      details: error.message
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete transaction with improved error handling
+app.delete('/api/transaction/:email/:index', async (req, res) => {
+  try {
+    const { email, index } = req.params;
+    const parsedIndex = parseInt(index);
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (isNaN(parsedIndex) || parsedIndex < 0 || parsedIndex >= user.transactions.length) {
+      return res.status(400).json({ message: 'Invalid transaction index' });
+    }
+
+    // Get the transaction to be removed
+    const transaction = user.transactions[parsedIndex];
+
+    // Update totals
+    if (transaction.type === 'expense' && transaction.category) {
+      user.expenses[transaction.category] = Math.max(0, (user.expenses[transaction.category] || 0) - transaction.amount);
+    } else if (transaction.type === 'income') {
+      user.income = Math.max(0, (user.income || 0) - transaction.amount);
+    }
+
+    // Remove the transaction
+    user.transactions.splice(parsedIndex, 1);
+    await user.save();
+
+    res.json({
+      message: 'Transaction deleted successfully',
+      user
     });
+  } catch (error) {
+    console.error('Delete transaction error:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
