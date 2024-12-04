@@ -47,5 +47,5 @@ describe('Transaction Processing', () => {
 ## Test Results
 
 Initial State:
-[https://i.imgur.com/lAA2myz.png]
 
+[https://i.imgur.com/lAA2myz.png]
