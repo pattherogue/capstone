@@ -49,4 +49,7 @@ describe('Transaction Processing', () => {
 ![Node.js Terminal](./7_screenshots/Node.js Terminal.png)
 
 
+![React Terminal](./7_screenshots/React Terminal.png)
+
+
 
