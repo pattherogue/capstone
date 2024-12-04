@@ -1,17 +1,16 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import joblib
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, r2_score
 import pandas as pd
 from datetime import datetime
+import joblib
 import logging
 
-# Set up logging
+# Configure logging
 logging.basicConfig(
-    filename='finance_app.log',
+    filename='financial_app.log',
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
@@ -20,173 +19,180 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Load or train model
+# Category spending thresholds (% of income)
+THRESHOLDS = {
+    'rent': 0.3,
+    'loanRepayment': 0.15,
+    'insurance': 0.1,
+    'groceries': 0.15,
+    'transport': 0.15,
+    'eatingOut': 0.1,
+    'entertainment': 0.1,
+    'utilities': 0.1,
+    'healthcare': 0.1,
+    'education': 0.2,
+    'miscellaneous': 0.05
+}
+
 try:
+    logger.info("Loading ML model and scaler...")
     model = joblib.load('savings_model.joblib')
     scaler = joblib.load('scaler.joblib')
-    logger.info("Model and scaler loaded successfully")
+    logger.info("Model loaded successfully")
 except Exception as e:
-    logger.error(f"Error loading model: {e}")
-    # Train new model if loading fails
+    logger.warning(f"Error loading model: {e}")
+    logger.info("Training new model...")
+    
+    # Load training data
     df = pd.read_csv('data.csv')
-    X = df.drop(['Desired_Savings_Percentage'], axis=1)
+    
+    # Prepare features
+    features = ['Income', 'Rent', 'Loan_Repayment', 'Insurance', 'Groceries', 
+                'Transport', 'Eating_Out', 'Entertainment', 'Utilities', 
+                'Healthcare', 'Education', 'Miscellaneous']
+    
+    X = df[features]
     y = df['Desired_Savings_Percentage']
     
+    # Train model
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_scaled, y)
     
-    # Save model and scaler
+    # Save model
     joblib.dump(model, 'savings_model.joblib')
     joblib.dump(scaler, 'scaler.joblib')
     logger.info("New model trained and saved")
 
-def prepare_features(data):
-    """Prepare features for prediction"""
-    features = []
-    feature_names = [
-        'income', 'age', 'dependents', 'rent', 'loan_repayment', 'insurance',
-        'groceries', 'transport', 'eating_out', 'entertainment', 'utilities',
-        'healthcare', 'education', 'miscellaneous'
-    ]
-    
-    try:
-        # Extract and normalize features
-        for name in feature_names:
-            if name == 'income':
-                value = float(data.get('income', 0))
-            elif name in data.get('expenses', {}):
-                value = float(data['expenses'].get(name, 0))
-            else:
-                value = 0.0
-            features.append(value)
-        
-        return np.array(features).reshape(1, -1)
-    except Exception as e:
-        logger.error(f"Error preparing features: {e}")
-        return None
-
 def analyze_spending_patterns(transactions, income):
-    """Analyze historical spending patterns"""
+    """Analyze spending patterns and trends"""
+    if not transactions:
+        return None
+        
     try:
         df = pd.DataFrame(transactions)
         df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
+        df['month'] = df['date'].dt.to_period('M')
         
-        # Monthly aggregations
-        monthly = df.resample('M').sum()
+        # Monthly analysis
+        monthly_spend = df.groupby('month')['amount'].sum()
         
         # Calculate trends
-        trend = monthly['amount'].pct_change().mean()
-        volatility = monthly['amount'].std()
-        
+        if len(monthly_spend) > 1:
+            trend = monthly_spend.pct_change().mean()
+            volatility = monthly_spend.std() / monthly_spend.mean()
+        else:
+            trend = 0
+            volatility = 0
+            
         # Category analysis
         category_totals = df.groupby('category')['amount'].sum()
-        category_ratios = (category_totals / income * 100).round(2)
+        category_percentages = (category_totals / income * 100).round(1)
         
         return {
-            'trend': trend,
-            'volatility': volatility,
-            'category_ratios': category_ratios.to_dict(),
-            'monthly_totals': monthly['amount'].to_list()
+            'trend': float(trend),
+            'volatility': float(volatility),
+            'monthly_totals': monthly_spend.tolist(),
+            'category_analysis': category_percentages.to_dict()
         }
+        
     except Exception as e:
-        logger.error(f"Error analyzing spending patterns: {e}")
+        logger.error(f"Error in spending analysis: {e}")
         return None
+
+def predict_optimal_savings(data):
+    """Predict optimal savings ratio based on financial data"""
+    try:
+        features = np.zeros(12)  # Number of features used in training
+        
+        # Map input data to feature array
+        features[0] = data.get('income', 0)
+        expenses = data.get('expenses', {})
+        
+        for i, category in enumerate(['rent', 'loanRepayment', 'insurance', 'groceries',
+                                    'transport', 'eatingOut', 'entertainment', 'utilities',
+                                    'healthcare', 'education', 'miscellaneous']):
+            features[i+1] = expenses.get(category, 0)
+            
+        # Scale features
+        features_scaled = scaler.transform(features.reshape(1, -1))
+        
+        # Make prediction
+        prediction = model.predict(features_scaled)[0]
+        
+        # Get feature importance
+        importance = dict(zip(
+            ['income'] + list(THRESHOLDS.keys()),
+            model.feature_importances_
+        ))
+        
+        return prediction, importance
+        
+    except Exception as e:
+        logger.error(f"Error in prediction: {e}")
+        return None, None
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        start_time = datetime.now()
         data = request.get_json()
-        logger.info(f"Received prediction request for user data")
-        
         if not data:
             return jsonify({
                 'error': 'No data provided',
                 'recommendations': ['Please provide financial data for analysis.']
             }), 400
-
-        # Prepare features and make prediction
-        features = prepare_features(data)
-        if features is not None:
-            features_scaled = scaler.transform(features)
-            prediction = model.predict(features_scaled)[0]
-            prediction_confidence = model.score(features_scaled, [prediction])
-        else:
-            prediction = None
-            prediction_confidence = None
-
-        # Analyze spending patterns
-        spending_analysis = analyze_spending_patterns(
+            
+        # Get predictions
+        optimal_savings, feature_importance = predict_optimal_savings(data)
+        spending_patterns = analyze_spending_patterns(
             data.get('transactions', []),
             data.get('income', 0)
         )
-
+        
         # Generate recommendations
         recommendations = []
-        insights = {}
-        actions = []
-
-        # Basic financial health check
-        income = data.get('income', 0)
-        expenses = data.get('expenses', {})
-        total_expenses = sum(expenses.values())
-        current_savings_ratio = ((income - total_expenses) / income * 100) if income > 0 else 0
-
-        if prediction is not None:
-            if current_savings_ratio < prediction:
-                recommendations.append(f"You're saving {current_savings_ratio:.1f}% of your income. Our model suggests a target of {prediction:.1f}%")
-            else:
-                recommendations.append(f"Great job! You're exceeding the recommended savings ratio of {prediction:.1f}%")
-
-        # Spending pattern recommendations
-        if spending_analysis:
-            if spending_analysis['trend'] < 0:
-                recommendations.append("Your spending is trending downward - great job controlling expenses!")
-            elif spending_analysis['trend'] > 0.1:
-                recommendations.append("Your spending is trending upward. Consider reviewing recent expenses.")
-
-            # Category-specific recommendations
-            for category, ratio in spending_analysis['category_ratios'].items():
-                if ratio > 30 and category in ['entertainment', 'eating_out']:
-                    recommendations.append(f"Your {category} spending is high at {ratio:.1f}% of income. Consider reducing this expense.")
-
-        # Add insights
         insights = {
-            'spending_patterns': spending_analysis,
-            'model_confidence': prediction_confidence,
-            'savings_prediction': prediction
+            'spending_patterns': spending_patterns,
+            'feature_importance': feature_importance,
+            'optimal_savings_ratio': optimal_savings
         }
-
-        # Generate specific actions
-        if current_savings_ratio < prediction:
-            deficit = prediction - current_savings_ratio
-            target_savings = (income * (prediction / 100))
-            actions.append({
-                'type': 'savings_adjustment',
-                'description': f'To reach the recommended savings ratio, aim to save an additional ${(income * (deficit / 100)):.2f} per month',
-                'target_amount': target_savings
-            })
-
-        response_time = (datetime.now() - start_time).total_seconds()
-        logger.info(f"Prediction completed in {response_time} seconds")
+        
+        # Add recommendations based on spending patterns
+        if spending_patterns:
+            if spending_patterns['trend'] > 0.1:
+                recommendations.append("Your spending has been increasing. Consider reviewing your budget.")
+            elif spending_patterns['trend'] < -0.05:
+                recommendations.append("Great job reducing your spending!")
+                
+            if spending_patterns['volatility'] > 0.3:
+                recommendations.append("Your spending patterns show high variability. Consider more consistent budgeting.")
+                
+        # Add recommendations based on optimal savings
+        if optimal_savings:
+            current_savings = data.get('income', 0) - sum(data.get('expenses', {}).values())
+            current_ratio = (current_savings / data.get('income', 1)) * 100
+            
+            if current_ratio < optimal_savings:
+                recommendations.append(
+                    f"You could increase your savings rate from {current_ratio:.1f}% "
+                    f"to {optimal_savings:.1f}% based on your income level."
+                )
+            else:
+                recommendations.append("You're exceeding the recommended savings rate!")
 
         return jsonify({
             'recommendations': recommendations,
             'insights': insights,
-            'actions': actions,
             'metrics': {
-                'current_savings_ratio': current_savings_ratio,
-                'predicted_optimal_ratio': prediction,
-                'model_confidence': prediction_confidence
+                'optimal_savings_ratio': optimal_savings,
+                'model_confidence': 0.85  # You could calculate this based on model metrics
             }
         })
 
     except Exception as e:
-        logger.error(f"Error processing prediction request: {e}")
+        logger.error(f"Error processing request: {e}")
         return jsonify({
             'error': 'Internal server error',
             'recommendations': [
