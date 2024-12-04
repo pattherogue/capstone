@@ -1,0 +1,4 @@
+2024-12-04 00:58:24,355 - __main__ - INFO - Model and scaler loaded successfully
+2024-12-04 00:58:24,355 - __main__ - INFO - Starting prediction server on port 5002...
+2024-12-04 00:58:24,379 - werkzeug - WARNING -  * Debugger is active!
+2024-12-04 00:58:24,392 - werkzeug - INFO -  * Debugger PIN: 128-995-181
