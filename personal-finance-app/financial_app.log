@@ -136,3 +136,8 @@
 2024-12-04 15:32:01,715 - werkzeug - INFO - 127.0.0.1 - - [04/Dec/2024 15:32:01] "OPTIONS /predict HTTP/1.1" 200 -
 2024-12-04 15:32:01,717 - __main__ - ERROR - Error in prediction: X has 12 features, but StandardScaler is expecting 15 features as input.
 2024-12-04 15:32:01,722 - werkzeug - INFO - 127.0.0.1 - - [04/Dec/2024 15:32:01] "POST /predict HTTP/1.1" 200 -
+2024-12-04 16:32:39,060 - werkzeug - INFO - 127.0.0.1 - - [04/Dec/2024 16:32:39] "OPTIONS /predict HTTP/1.1" 200 -
+2024-12-04 16:32:39,062 - __main__ - ERROR - Error in prediction: X has 12 features, but StandardScaler is expecting 15 features as input.
+2024-12-04 16:32:39,067 - werkzeug - INFO - 127.0.0.1 - - [04/Dec/2024 16:32:39] "POST /predict HTTP/1.1" 200 -
+2024-12-04 16:32:39,178 - __main__ - ERROR - Error in prediction: X has 12 features, but StandardScaler is expecting 15 features as input.
+2024-12-04 16:32:39,182 - werkzeug - INFO - 127.0.0.1 - - [04/Dec/2024 16:32:39] "POST /predict HTTP/1.1" 200 -
